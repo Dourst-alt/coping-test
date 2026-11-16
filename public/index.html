@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Копинг-тест МЧС</title>
+<style>
+    body { font-family: 'Segoe UI', sans-serif; background: #0a0e14; color: #e3eaf0; margin: 0; padding: 20px; }
+    .container { max-width: 600px; margin: 0 auto; background: #141b24; padding: 20px; border-radius: 20px; border: 1px solid #26323f; }
+    h1 { color: #b0d4ff; text-align: center; font-size: 22px; }
+    input, button { width: 100%; padding: 10px; margin: 5px 0; border-radius: 8px; border: none; box-sizing: border-box; }
+    input { background: #0f161e; color: white; border: 1px solid #26323f; }
+    button { background: #2a4b6e; color: white; cursor: pointer; font-weight: bold; transition: 0.2s; }
+    button:hover { background: #3b5f82; }
+    .question { background: #0f161e; padding: 15px; border-radius: 8px; margin-bottom: 10px; border: 1px solid #1f2a35; }
+    .question p { margin: 0 0 10px 0; font-size: 14px; }
+    .options { display: flex; gap: 15px; }
+    .options label { cursor: pointer; font-size: 13px; color: #89b0d4; }
+    .hidden { display: none; }
+    .result-box { background: #0a121c; padding: 15px; border-radius: 8px; font-family: monospace; white-space: pre-wrap; font-size: 13px; border: 1px solid #2a3542; }
+    .rec { margin-top: 15px; padding: 15px; background: #1a2a3a; border-left: 4px solid #ffd966; border-radius: 4px; font-size: 13px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<div class="container">
+    <h1>🧠 Копинг-тест (МЧС)</h1>
+    
+    <div id="authScreen">
+        <h2>Вход</h2>
+        <input type="text" id="loginUser" placeholder="Логин">
+        <input type="password" id="loginPass" placeholder="Пароль">
+        <button onclick="login()">Войти</button>
+        <hr style="border-color:#26323f; margin: 20px 0;">
+        <h2>Регистрация</h2>
+        <input type="text" id="regFio" placeholder="ФИО (Иванов Иван)">
+        <input type="text" id="regOrg" placeholder="Организация" value="Уральский институт ГПС МЧС">
+        <input type="text" id="regDep" placeholder="Подразделение">
+        <input type="text" id="regPos" placeholder="Должность">
+        <input type="number" id="regYear" placeholder="Год рождения">
+        <input type="text" id="regUser" placeholder="Логин">
+        <input type="password" id="regPass" placeholder="Пароль">
+        <button onclick="register()">Зарегистрироваться</button>
+        <p id="authError" style="color: #ff8888; font-size: 13px; text-align: center;"></p>
+    </div>
+
+    <div id="testScreen" class="hidden">
+        <h2 id="userName" style="font-size: 18px;"></h2>
+        <button onclick="logout()" style="background: #4a2a2a; margin-bottom: 15px;">Выйти</button>
+        <div id="questionsContainer"></div>
+        <button onclick="submitTest()" style="background: #2e7d32;">Завершить тест</button>
+    </div>
+
+    <div id="resultScreen" class="hidden">
+        <h2>Результат</h2>
+        <div id="resultText" class="result-box"></div>
+        <div id="recommendationBox" class="rec"></div>
+        <button onclick="location.reload()" style="margin-top:15px;">Пройти ещё раз</button>
+    </div>
+</div>
+
+<script>
+let QUESTIONS = [];
+let token = localStorage.getItem('token');
+
+async function loadQuestions() {
+    const res = await fetch('/api/questions');
+    QUESTIONS = await res.json();
+    renderQuestions();
+}
+
+function renderQuestions() {
+    const container = document.getElementById('questionsContainer');
+    container.innerHTML = QUESTIONS.map(q => `
+        <div class="question">
+            <p>${q.q_id}. ${q.text}</p>
+            <div class="options">
+                <label><input type="radio" name="${q.q_id}" value="3"> Часто (3)</label>
+                <label><input type="radio" name="${q.q_id}" value="2"> Иногда (2)</label>
+                <label><input type="radio" name="${q.q_id}" value="1"> Никогда (1)</label>
+            </div>
+        </div>
+    `).join('');
+}
+
+async function login() {
+    const login = document.getElementById('loginUser').value;
+    const password = document.getElementById('loginPass').value;
+    const res = await fetch('/api/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ login, password })
+    });
+    const data = await res.json();
+    if (data.error) return document.getElementById('authError').textContent = data.error;
+    
+    token = data.token;
+    localStorage.setItem('token', token);
+    localStorage.setItem('user', JSON.stringify(data.user));
+    showTest();
+}
+
+async function register() {
+    const payload = {
+        fio: document.getElementById('regFio').value,
+        org: document.getElementById('regOrg').value,
+        dep: document.getElementById('regDep').value,
+        pos: document.getElementById('regPos').value,
+        birthYear: document.getElementById('regYear').value,
+        login: document.getElementById('regUser').value,
+        password: document.getElementById('regPass').value
+    };
+    const res = await fetch('/api/register', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.error) return document.getElementById('authError').textContent = data.error;
+    alert('Успех! Теперь войдите.');
+}
+
+function showTest() {
+    document.getElementById('authScreen').classList.add('hidden');
+    document.getElementById('testScreen').classList.remove('hidden');
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    document.getElementById('userName').textContent = 'Привет, ' + (user.fio || 'Пользователь');
+}
+
+function logout() {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    location.reload();
+}
+
+async function submitTest() {
+    const answers = {};
+    QUESTIONS.forEach(q => {
+        const checked = document.querySelector(`input[name="${q.q_id}"]:checked`);
+        if (checked) answers[q.q_id] = parseInt(checked.value);
+    });
+
+    if (Object.keys(answers).length < QUESTIONS.length) {
+        return alert('Ответьте на все вопросы!');
+    }
+
+    let total = Object.values(answers).reduce((a,b)=>a+b, 0);
+    let topAdapt = total > 50 ? 'Адаптивная' : (total > 30 ? 'Относительно адаптивная' : 'Неадаптивная');
+
+    const res = await fetch('/api/results', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: JSON.stringify({ answers, topStrategy: 'Смешанная', topAdapt })
+    });
+    
+    const data = await res.json();
+    if (data.error) return alert(data.error);
+
+    document.getElementById('testScreen').classList.add('hidden');
+    document.getElementById('resultScreen').classList.remove('hidden');
+    document.getElementById('resultText').textContent = `Тип адаптивности: ${topAdapt}\nВсего баллов: ${total}`;
+    document.getElementById('recommendationBox').textContent = data.recommendation;
+}
+
+window.onload = () => {
+    if (token) showTest();
+    loadQuestions();
+};
+</script>
+</body>
+</html>

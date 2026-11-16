@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Админ-панель | Диагностический комплекс</title>
+<style>
+    body { font-family: 'Segoe UI', sans-serif; background: #0a0e14; color: #e3eaf0; margin: 0; padding: 20px; }
+    .container { max-width: 1000px; margin: 0 auto; }
+    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #2a3542; padding-bottom: 10px; }
+    h1 { margin: 0; color: #b0d4ff; }
+    .nav-tabs { display: flex; gap: 10px; margin-bottom: 20px; }
+    .nav-tab { padding: 10px 20px; background: #141b24; border: 1px solid #26323f; border-radius: 8px; cursor: pointer; color: #89b0d4; font-weight: bold; }
+    .nav-tab.active { background: #2a4b6e; color: white; border-color: #3b5f82; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    
+    .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px; }
+    .card { background: #141b24; padding: 20px; border-radius: 12px; border: 1px solid #26323f; text-align: center; }
+    .card h3 { margin: 0 0 10px 0; font-size: 14px; color: #89b0d4; }
+    .card .value { font-size: 32px; font-weight: bold; color: #ffd966; }
+    
+    table { width: 100%; border-collapse: collapse; background: #141b24; border-radius: 12px; overflow: hidden; }
+    th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #26323f; }
+    th { background: #101a24; color: #89b0d4; font-size: 13px; }
+    td { font-size: 14px; color: #b0cef0; }
+    
+    .btn-export { background: #2a4b6e; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: bold; border: 1px solid #3b5f82; }
+    .btn-export:hover { background: #3b5f82; }
+    
+    .drag-item { background: #141b24; border: 1px solid #26323f; padding: 10px; margin-bottom: 10px; border-radius: 8px; cursor: grab; display: flex; align-items: center; gap: 10px; }
+    .drag-item.dragging { opacity: 0.5; background: #2a4b6e; }
+    .drag-handle { font-size: 20px; color: #6d8aa8; }
+    .drag-content { flex: 1; }
+    .drag-content input { width: 100%; background: #0a121c; border: 1px solid #2b3d50; color: white; padding: 5px; border-radius: 4px; margin-bottom: 5px; }
+    .drag-row { display: flex; gap: 5px; }
+    .drag-row select { background: #0a121c; border: 1px solid #2b3d50; color: white; padding: 5px; border-radius: 4px; flex: 1; }
+    .btn-save { background: #2e7d32; color: white; padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; margin-top: 10px; }
+    .btn-del { background: #c62828; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; }
+</style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>📊 Админ-панель (МЧС)</h1>
+        <a href="/api/admin/export?key=admin123" class="btn-export">📥 Скачать CSV (Excel)</a>
+    </header>
+
+    <div class="nav-tabs">
+        <div class="nav-tab active" onclick="switchTab('dashboard')">📈 Аналитика</div>
+        <div class="nav-tab" onclick="switchTab('psychometrics')">🔬 Психометрия</div>
+        <div class="nav-tab" onclick="switchTab('constructor')">🛠 Конструктор</div>
+    </div>
+
+    <!-- АНАЛИТИКА -->
+    <div id="tab-dashboard" class="tab-content active">
+        <div class="cards">
+            <div class="card"><h3>Пользователей</h3><div class="value" id="totalUsers">0</div></div>
+            <div class="card"><h3>Пройдено тестов</h3><div class="value" id="totalResults">0</div></div>
+            <div class="card"><h3>Статус</h3><div class="value" style="font-size:18px;color:#6aaa6a;">Онлайн</div></div>
+        </div>
+        <div style="background:#141b24;padding:20px;border-radius:12px;margin-bottom:20px;">
+            <h3 style="margin-top:0;">Распределение адаптивности</h3>
+            <div id="chartArea"></div>
+        </div>
+        <h3>Последние прохождения</h3>
+        <table>
+            <thead><tr><th>Дата</th><th>ФИО</th><th>Подразделение</th><th>Результат</th></tr></thead>
+            <tbody id="recentTable"></tbody>
+        </table>
+    </div>
+
+    <!-- ПСИХОМЕТРИЯ -->
+    <div id="tab-psychometrics" class="tab-content">
+        <p style="color:#89b0d4;">Расчёт средних значений и стандартных отклонений по стратегиям. Необходимо для 2-го этапа (научная апробация).</p>
+        <table>
+            <thead><tr><th>Стратегия</th><th>Среднее (M)</th><th>Ст. отклонение (SD)</th><th>Кол-во ответов (N)</th></tr></thead>
+            <tbody id="psychoTable"></tbody>
+        </table>
+    </div>
+
+    <!-- КОНСТРУКТОР -->
+    <div id="tab-constructor" class="tab-content">
+        <p style="color:#89b0d4;">Перетаскивайте вопросы за иконку ≡, чтобы изменить порядок. Меняйте текст и шкалы.</p>
+        <div id="constructorList"></div>
+        <button class="btn-save" onclick="saveQuestions()">💾 Сохранить изменения</button>
+    </div>
+</div>
+
+<script>
+    function switchTab(tabId) {
+        document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+        document.querySelector(`.nav-tab[onclick="switchTab('${tabId}')"]`).classList.add('active');
+        document.getElementById('tab-' + tabId).classList.add('active');
+        
+        if (tabId === 'constructor') loadConstructor();
+        if (tabId === 'psychometrics') loadPsychometrics();
+    }
+
+    // --- Аналитика ---
+    async function loadStats() {
+        try {
+            const res = await fetch('/api/admin/stats');
+            const data = await res.json();
+            document.getElementById('totalUsers').textContent = data.totalUsers;
+            document.getElementById('totalResults').textContent = data.totalResults;
+
+            const chartArea = document.getElementById('chartArea');
+            let totalAdapt = 0;
+            data.adaptStats.forEach(s => totalAdapt += s.count);
+            
+            chartArea.innerHTML = data.adaptStats.map(stat => {
+                let percent = totalAdapt > 0 ? Math.round((stat.count / totalAdapt) * 100) : 0;
+                return `<div style="display:flex;align-items:center;margin-bottom:10px;">
+                    <div style="width:150px;font-size:13px;">${stat.top_adapt}</div>
+                    <div style="flex:1;background:#0f161e;height:20px;border-radius:10px;overflow:hidden;margin:0 10px;">
+                        <div style="width:${percent}%;height:100%;background:#2e7d32;"></div>
+                    </div>
+                    <div style="width:40px;text-align:right;font-weight:bold;">${percent}%</div>
+                </div>`;
+            }).join('');
+
+            document.getElementById('recentTable').innerHTML = data.recent.map(r => `
+                <tr style="border-bottom:1px solid #26323f;">
+                    <td>${new Date(r.created_at).toLocaleString('ru-RU')}</td>
+                    <td>${r.fio}</td>
+                    <td>${r.dep || '-'}</td>
+                    <td><span style="background:#0f161e;padding:3px 8px;border-radius:12px;">${r.top_adapt}</span></td>
+                </tr>`).join('');
+        } catch(e) { console.error(e); }
+    }
+    setInterval(loadStats, 5000);
+    loadStats();
+
+    // --- Психометрия ---
+    async function loadPsychometrics() {
+        const res = await fetch('/api/admin/psychometrics');
+        const data = await res.json();
+        const tbody = document.getElementById('psychoTable');
+        
+        if (data.message) {
+            tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;">${data.message}</td></tr>`;
+            return;
+        }
+        tbody.innerHTML = data.strategies.map(s => `
+            <tr>
+                <td>${s.strategy}</td>
+                <td>${s.mean}</td>
+                <td>${s.sd}</td>
+                <td>${s.n}</td>
+            </tr>
+        `).join('');
+    }
+
+    // --- Конструктор ---
+    let currentQuestions = [];
+
+    async function loadConstructor() {
+        const res = await fetch('/api/questions');
+        currentQuestions = await res.json();
+        renderConstructor();
+    }
+
+    function renderConstructor() {
+        const list = document.getElementById('constructorList');
+        list.innerHTML = currentQuestions.map((q, index) => `
+            <div class="drag-item" draggable="true" data-index="${index}">
+                <div class="drag-handle">≡</div>
+                <div class="drag-content">
+                    <input type="text" value="${q.text}" onchange="updateQ(${index}, 'text', this.value)">
+                    <div class="drag-row">
+                        <input type="text" value="${q.q_id}" onchange="updateQ(${index}, 'q_id', this.value)" style="width:80px;">
+                        <select onchange="updateQ(${index}, 'block', this.value)">
+                            <option value="A" ${q.block==='A'?'selected':''}>Блок А</option>
+                            <option value="B" ${q.block==='B'?'selected':''}>Блок Б</option>
+                            <option value="V" ${q.block==='V'?'selected':''}>Блок В</option>
+                        </select>
+                        <select onchange="updateQ(${index}, 'adapt', this.value)">
+                            <option value="Адаптивная" ${q.adapt==='Адаптивная'?'selected':''}>Адаптивная</option>
+                            <option value="Относительно адаптивная" ${q.adapt==='Относительно адаптивная'?'selected':''}>Относительно</option>
+                            <option value="Неадаптивная" ${q.adapt==='Неадаптивная'?'selected':''}>Неадаптивная</option>
+                        </select>
+                        <button class="btn-del" onclick="deleteQ(${index})">✖</button>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+
+        const items = list.querySelectorAll('.drag-item');
+        items.forEach(item => {
+            item.addEventListener('dragstart', handleDragStart);
+            item.addEventListener('dragover', handleDragOver);
+            item.addEventListener('drop', handleDrop);
+            item.addEventListener('dragend', handleDragEnd);
+        });
+    }
+
+    function updateQ(index, field, value) { currentQuestions[index][field] = value; }
+    function deleteQ(index) {
+        if(confirm('Удалить вопрос?')) { currentQuestions.splice(index, 1); renderConstructor(); }
+    }
+
+    let dragSrcEl = null;
+    function handleDragStart(e) { dragSrcEl = this; e.dataTransfer.effectAllowed = 'move'; this.classList.add('dragging'); }
+    function handleDragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; return false; }
+    function handleDrop(e) {
+        e.stopPropagation();
+        if (dragSrcEl !== this) {
+            const fromIndex = parseInt(dragSrcEl.dataset.index);
+            const toIndex = parseInt(this.dataset.index);
+            const movedItem = currentQuestions.splice(fromIndex, 1)[0];
+            currentQuestions.splice(toIndex, 0, movedItem);
+            renderConstructor();
+        }
+        return false;
+    }
+    function handleDragEnd(e) { this.classList.remove('dragging'); dragSrcEl = null; }
+
+    async function saveQuestions() {
+        const res = await fetch('/api/questions/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ questions: currentQuestions })
+        });
+        if (res.ok) alert('Вопросы сохранены!');
+        else alert('Ошибка');
+    }
+</script>
+</body>
+</html>
